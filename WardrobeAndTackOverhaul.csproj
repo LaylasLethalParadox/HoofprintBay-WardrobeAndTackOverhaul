@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <AssemblyName>WardrobeAndTackOverhaul</AssemblyName>
+    <RootNamespace>WardrobeAndTackOverhaul</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <Version>1.0.0</Version>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <!-- The game install that holds BepInEx. Inside <Game>\ModSource\<Id> it is found by itself. -->
+    <GameDir Condition="'$(GameDir)' == '' and Exists('$(MSBuildThisFileDirectory)..\..\BepInEx')">$(MSBuildThisFileDirectory)..\..\</GameDir>
+    <GameDir Condition="'$(GameDir)' == ''">C:\Program Files (x86)\Steam\steamapps\common\HorsesOfHoofprintBay\</GameDir>
+    <BepInExDir>$(GameDir)BepInEx\</BepInExDir>
+    <DefineConstants Condition="'$(TestHooks)' == 'true'">$(DefineConstants);TESTHOOKS</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="BepInEx.Core" HintPath="$(BepInExDir)core\BepInEx.Core.dll" Private="false" />
+    <Reference Include="BepInEx.Unity.IL2CPP" HintPath="$(BepInExDir)core\BepInEx.Unity.IL2CPP.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(BepInExDir)core\0Harmony.dll" Private="false" />
+    <Reference Include="Il2CppInterop.Runtime" HintPath="$(BepInExDir)core\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="Il2CppInterop.Common" HintPath="$(BepInExDir)core\Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="SemanticVersioning" HintPath="$(BepInExDir)core\SemanticVersioning.dll" Private="false" />
+    <!-- Interop assemblies BepInEx generates from the game on first launch. Add more from BepInEx\interop as needed. -->
+    <Reference Include="Assembly-CSharp" HintPath="$(BepInExDir)interop\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="Il2Cppmscorlib" HintPath="$(BepInExDir)interop\Il2Cppmscorlib.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(BepInExDir)interop\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="UnityEngine.IMGUIModule" HintPath="$(BepInExDir)interop\UnityEngine.IMGUIModule.dll" Private="false" />
+    <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(BepInExDir)interop\UnityEngine.TextRenderingModule.dll" Private="false" />
+    <Reference Include="UnityEngine.UIModule" HintPath="$(BepInExDir)interop\UnityEngine.UIModule.dll" Private="false" />
+    <Reference Include="UnityEngine.ImageConversionModule" HintPath="$(BepInExDir)interop\UnityEngine.ImageConversionModule.dll" Private="false" />
+    <Reference Include="UnityEngine.UI" HintPath="$(BepInExDir)interop\UnityEngine.UI.dll" Private="false" />
+    <Reference Include="Unity.TextMeshPro" HintPath="$(BepInExDir)interop\Unity.TextMeshPro.dll" Private="false" />
+    <!-- Optional at run time: the settings page is only registered when Mod Manager is installed. -->
+    <Reference Include="ModManager" HintPath="$(BepInExDir)plugins\ModManager\ModManager.dll" Private="false" />
+  </ItemGroup>
+
+  <!-- Installs the plugin into the game. Build with -p:NoInstall=true to only compile. -->
+  <Target Name="CopyToPlugins" AfterTargets="Build" Condition="'$(NoInstall)' != 'true'">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(BepInExDir)plugins\WardrobeAndTackOverhaul\" />
+  </Target>
+
+</Project>

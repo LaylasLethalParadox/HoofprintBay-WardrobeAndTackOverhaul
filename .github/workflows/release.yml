@@ -1,0 +1,62 @@
+# Pushing a version tag such as v1.2.0 on main publishes that version as the latest release and marks the
+# older releases as archived (title and a note; they stay downloadable).
+# GitHub can't compile the mod because that needs the game's files, so the zip is built on a PC with
+# package.ps1 and committed as dist/WardrobeAndTackOverhaul-<version>.zip. Tags themselves are kept.
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Check the tag
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::$GITHUB_REF_NAME is not on main"
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          if ! grep -q "<Version>$version</Version>" WardrobeAndTackOverhaul.csproj; then
+            echo "::error::WardrobeAndTackOverhaul.csproj is not at version $version"
+            exit 1
+          fi
+          if [ ! -f "dist/WardrobeAndTackOverhaul-$version.zip" ]; then
+            echo "::error::dist/WardrobeAndTackOverhaul-$version.zip is not in this commit"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Replace the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release delete "$GITHUB_REF_NAME" --yes
+          fi
+          gh release create "$GITHUB_REF_NAME" "dist/WardrobeAndTackOverhaul-$VERSION.zip" \
+            --verify-tag --latest \
+            --title "Wardrobe and tack overhaul $VERSION" \
+            --notes-file RELEASE_NOTES.md
+          # Older releases stay downloadable; they are only marked as archived (once).
+          gh release list --limit 100 --json tagName --jq '.[].tagName' | while read -r old; do
+            if [ "$old" = "$GITHUB_REF_NAME" ]; then
+              continue
+            fi
+            title=$(gh release view "$old" --json name --jq .name)
+            case "$title" in *"(archived)") continue ;; esac
+            gh release view "$old" --json body --jq .body > old-notes.md
+            printf 'Archived: this is an older version. The current one is %s.\n\n' "$GITHUB_REF_NAME" | cat - old-notes.md > archived-notes.md
+            gh release edit "$old" --title "$title (archived)" --notes-file archived-notes.md
+          done
