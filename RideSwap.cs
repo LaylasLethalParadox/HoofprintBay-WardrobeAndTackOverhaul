@@ -42,10 +42,7 @@ internal static class RideSwap
             {
                 undo.Horse = __0;
                 undo.HorseTack = __0.tack;
-                var swapped = new Il2CppStringArray(__0.tack.Length);
-                for (var i = 0; i < swapped.Length; i++)
-                    swapped[i] = i < tack.Length ? tack[i] ?? "" : "";
-                __0.tack = swapped;
+                __0.tack = GameArrays.New(__0.tack.Length, i => i < tack.Length ? tack[i] : "");
             }
 
             // Only the player's own clothes; a lesson student keeps theirs.
@@ -63,7 +60,7 @@ internal static class RideSwap
                         if (slot >= ids.Length || slot >= outfit.Length)
                             continue;
                         undo.Clothes.Add((ids, slot, ids[slot]));
-                        ids[slot] = outfit[slot] ?? "";
+                        GameArrays.Set(ids, slot, outfit[slot]);
                     }
                 }
             }
@@ -90,7 +87,7 @@ internal static class RideSwap
             if (undo.Horse != null)
                 undo.Horse.tack = undo.HorseTack;
             foreach (var (outfit, slot, id) in undo.Clothes)
-                outfit[slot] = id;
+                GameArrays.Set(outfit, slot, id);
         }
         catch (Exception e)
         {

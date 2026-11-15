@@ -114,6 +114,9 @@ internal static class Cabinets
 
         public bool Valid => player != null && Data() != null;
 
+        // The game shows the other outfit now (the cabinet was not closed in between).
+        public bool Switched => player != null && (int)player.currentOutfitType != outfitType;
+
         public string[] Worn()
         {
             var data = Data();
@@ -132,7 +135,7 @@ internal static class Cabinets
             var data = Data();
             foreach (var slot in OutfitSlots)
                 if (slot < data.Length && slot < ids.Length)
-                    data[slot] = ids[slot] ?? "";
+                    GameArrays.Set(data, slot, ids[slot]);
             player.LoadSavedClothes();
         }
 
@@ -143,7 +146,7 @@ internal static class Cabinets
                 return;
             foreach (var slot in OutfitSlots)
                 if (slot < data.Length && slot < ids.Length)
-                    data[slot] = ids[slot] ?? "";
+                    GameArrays.Set(data, slot, ids[slot]);
         }
 
         public string[] Saved(Activity a) => Store.Outfit(a);
@@ -264,7 +267,7 @@ internal static class Cabinets
             horse.ClearAllTack(false);
             var tack = data.tack;
             for (var i = 0; i < tack.Length; i++)
-                tack[i] = i < ids.Length ? ids[i] ?? "" : "";
+                GameArrays.Set(tack, i, i < ids.Length ? ids[i] : "");
             horse.LoadSavedTack(cabinet.tacksByType);
         }
 
@@ -274,7 +277,7 @@ internal static class Cabinets
             if (tack == null)
                 return;
             for (var i = 0; i < tack.Length; i++)
-                tack[i] = i < ids.Length ? ids[i] ?? "" : "";
+                GameArrays.Set(tack, i, i < ids.Length ? ids[i] : "");
         }
 
         public string[] Saved(Activity a) => Store.HorseTack(data.uuid, a);
@@ -297,8 +300,25 @@ internal static class Cabinets
     [HarmonyPostfix]
     private static void CabinetUpdate(Cabinet __instance)
     {
-        if (tabsByCabinet.Count > 0 && tabsByCabinet.TryGetValue(__instance.Pointer, out var tabs) && tabs.Alive)
-            tabs.Tick();
+        if (tabsByCabinet.Count == 0 || !tabsByCabinet.TryGetValue(__instance.Pointer, out var tabs) || !tabs.Alive)
+            return;
+        tabs.Tick();
+        try
+        {
+            // Normal/Competition Outfit pressed while the wardrobe stays open: the shown set goes back to
+            // Default for the outfit it belongs to, and the tabs are set up again for the other outfit.
+            if (tabs.Target is WardrobeTarget wardrobe && wardrobe.Switched)
+            {
+                tabs.Restore();
+                var clothes = __instance.TryCast<ClothesCabinet>();
+                if (clothes != null)
+                    WardrobeOpened(clothes);
+            }
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogError($"Following the outfit switch failed: {e}");
+        }
     }
 
     // The game never saves an activity's set as its own: Default goes back first.
@@ -500,7 +520,7 @@ internal static class Cabinets
                 if (tackStash != null && tack != null)
                 {
                     for (var i = 0; i < tack.Length; i++)
-                        tack[i] = i < tackStash.Length ? tackStash[i] : "";
+                        GameArrays.Set(tack, i, i < tackStash.Length ? tackStash[i] : "");
                     horse.ClearAllTack(false);
                     horse.LoadSavedTack(cabinet.tacksByType);
                 }

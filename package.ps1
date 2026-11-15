@@ -4,7 +4,8 @@
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 
-dotnet build -c Release
+# NoInstall: building the release zip never touches a game install.
+dotnet build -c Release -p:NoInstall=true
 if ($LASTEXITCODE -ne 0) { throw 'The build failed.' }
 
 $version = ([xml](Get-Content WardrobeAndTackOverhaul.csproj)).Project.PropertyGroup.Version | Where-Object { $_ } | Select-Object -First 1

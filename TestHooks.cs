@@ -48,6 +48,64 @@ public static class TestHooks
         Plugin.Logger.LogInfo($"halter {sprite.name} tex={sprite.texture.name} {sprite.texture.width}x{sprite.texture.height} rect={sprite.rect} packed={sprite.packed}");
     }
 
+    // The game's own outfits as they are in memory right now.
+    public static void DumpOutfits(string label)
+    {
+        var outfits = DataManager.i?.data?.player?.outfits;
+        if (outfits == null) { Plugin.Logger.LogInfo($"[outfits {label}] none"); return; }
+        for (var i = 0; i < outfits.Count; i++)
+        {
+            var o = outfits[i]?.outfit;
+            Plugin.Logger.LogInfo($"[outfits {label}] {i}: " + (o == null ? "null" : string.Join(", ", o)));
+        }
+    }
+
+    // A full collection of the game's (il2cpp) heap, so freed strings show up at once.
+    public static void ForceGc()
+    {
+        Il2CppInterop.Runtime.IL2CPP.il2cpp_gc_collect(2);
+        Il2CppInterop.Runtime.IL2CPP.il2cpp_gc_collect(2);
+        Plugin.Logger.LogInfo("[dbg] GC collected");
+    }
+
+    public static void DumpTack(string horseName, string label)
+    {
+        foreach (var h in DataManager.i.data.horses)
+            if (h.name == horseName)
+                Plugin.Logger.LogInfo($"[tack {label}] {h.name}: " + (h.tack == null ? "null" : string.Join(", ", h.tack)));
+    }
+
+    // Test copies only: dress the rider's own outfit (0 normal, 1 competition) again after damage.
+    public static void SetGameOutfit(string type, string ids)
+    {
+        var outfit = DataManager.i.data.player.outfits[int.Parse(type)].outfit;
+        var values = ids.Split(',');
+        for (var i = 0; i < outfit.Length && i < values.Length; i++)
+            GameArrays.Set(outfit, i, values[i]);
+    }
+
+    public static void SetEnabled(string on) => Plugin.Enabled.Value = bool.Parse(on);
+
+    public static void DumpStore() =>
+        Plugin.Logger.LogInfo("[store] " + System.IO.File.ReadAllText(System.IO.Path.Combine(DataManager.saveGamePath, DataManager.currentSaveDirectory, "WardrobeAndTackOverhaul.json")).Replace('\n', ' ').Replace("  ", ""));
+
+    // Ends the running ride at the finish line, as if it was ridden to the end, so the result and prestige screens show.
+    public static void FinishRide()
+    {
+        var ride = UnityEngine.Object.FindObjectsByType<Sidescroller>(UnityEngine.FindObjectsSortMode.None).FirstOrDefault();
+        if (ride == null) { Plugin.Logger.LogInfo("[dbg] no ride"); return; }
+        ride.FinishCourse(true, true, "");
+        Plugin.Logger.LogInfo("[dbg] ride finished");
+    }
+
+    // The prestige lines of the result screen.
+    public static void DumpPrestige()
+    {
+        var ride = UnityEngine.Object.FindObjectsByType<Sidescroller>(UnityEngine.FindObjectsSortMode.None).FirstOrDefault();
+        if (ride == null) return;
+        Plugin.Logger.LogInfo($"[prestige] clothes='{ride.textPrestigeRiderClothes?.text}' dirt='{ride.textPrestigeHorseDirt?.text}' placement='{ride.textPrestigeCompPlacement?.text}'");
+    }
+
     // ids: comma separated, one per slot.
     public static void SetOutfit(string activity, string ids) =>
         Store.SetOutfit(new[] { Enum.Parse<Activity>(activity) }, ids.Split(','));

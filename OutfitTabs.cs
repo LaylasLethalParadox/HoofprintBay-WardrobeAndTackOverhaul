@@ -45,6 +45,7 @@ internal sealed class OutfitTabs
     private float savedUntil;
 
     public bool Alive => cabinet != null && saveButton != null;
+    public IOutfitTarget Target => target;
 
     // arrangeTabs places the visible tabs (Default first), the Save button and, when close is given, a Close button.
     public OutfitTabs(Transform cabinet, TMP_Text heading, GameObject saveTemplate, GameObject tabTemplate,
