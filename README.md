@@ -1,6 +1,6 @@
 # Wardrobe and tack overhaul for Horses of Hoofprint Bay
 
-Gives your rider an outfit and each horse a set of tack for every kind of ride in [Horses of Hoofprint Bay](https://store.steampowered.com/app/3727090/): training, trail rides, lessons, Caprilli, jumping and cross country. When a ride starts, the mod puts on the set you saved for it. It also adds halters with lead ropes in five colours.
+Gives your rider an outfit and each horse a set of tack for every kind of ride in [Horses of Hoofprint Bay](https://store.steampowered.com/app/3727090/): training, trail rides, lessons, Caprilli, jumping and cross country. When a ride starts, the mod puts on the set you saved for it. It also adds halters with lead ropes in five colours, plus custom colours you pick yourself.
 
 ## Outfits
 
@@ -23,6 +23,10 @@ The game's own tack stays as it was. Default goes back on when you close the cab
 
 Every horse starts with the blue halter. Red, yellow, green and purple halters with lead rope cost 40 each in the equipment store, in the ear bonnet list. Put one in the basket and pay at the counter like any other item. In Edit Tack, the Halter tab shows the horse as it stands in the stable, with the halter and lead rope on, so you can see the colour before you pick it.
 
+Once the store sells the game's custom colour ear bonnet, the ear bonnet list also has a Custom Color Halter with Lead Rope for 60. You choose its colour in the store's colour picker, and you can buy each colour once. Every colour you buy gets a button on the Halter tab.
+
+On walking trails such as the Forest Walk, where your rider leads the horse, the lead rope has the colour of the horse's halter.
+
 ## Settings
 
 The only setting is Enabled, which switches the whole mod on or off. With [Mod Manager](https://github.com/LaylasLethalParadox/HoofprintBay-ModManager) installed it is in the Mods menu; without it, it is in `BepInEx\config\hoofprintbay.wardrobeandtackoverhaul.cfg`.
@@ -43,7 +47,6 @@ Wardrobe and tack overhaul doesn't change `save.json`. The saved outfits, tack s
 
 ## Known limits
 
-- On walking trails, where you lead the horse, the lead rope keeps the game's colour.
 - Bought halters are only kept by this mod, so the game's Sell list doesn't show them.
 
 ## Building

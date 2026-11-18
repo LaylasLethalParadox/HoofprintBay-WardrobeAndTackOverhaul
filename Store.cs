@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace WardrobeAndTackOverhaul;
@@ -117,6 +118,13 @@ internal static class Store
             return;
         d.HaltersOwned.Add(color);
         Write();
+    }
+
+    // Custom colours ("#RRGGBB") in the order they were bought.
+    public static List<string> CustomHalters()
+    {
+        var d = Current();
+        return d == null ? new List<string>() : d.HaltersOwned.Where(Halters.IsCustom).ToList();
     }
 
     // Null when the horse wears the game's own halter colour.

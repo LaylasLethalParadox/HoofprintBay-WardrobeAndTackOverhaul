@@ -39,6 +39,47 @@ public static class TestHooks
     }
 
     // Saves the halter picture (its rect in the texture) to a png.
+    // Every lead rope line in the scene and where its colour could come from.
+    public static void LeadInfo()
+    {
+        foreach (var r in UnityEngine.Object.FindObjectsByType<UnityEngine.LineRenderer>(UnityEngine.FindObjectsSortMode.None))
+        {
+            var m = r.sharedMaterial;
+            Plugin.Logger.LogInfo($"[lead] {r.transform.parent?.name}/{r.name} mat={m?.name} shader={m?.shader?.name} active={r.gameObject.activeInHierarchy}");
+            if (m != null)
+                foreach (var n in new[] { "_Color", "_TintColor", "_BaseColor", "_MainColor", "_RendererColor", "_Tint" })
+                    if (m.HasProperty(n))
+                        Plugin.Logger.LogInfo($"[lead]   {n} {m.GetColor(n)}");
+            var own = r.material;
+            if (own != null && own.HasProperty("_Color"))
+                Plugin.Logger.LogInfo($"[lead]   instance _Color {own.GetColor("_Color")}");
+        }
+        var colors = DataManager.i?.data?.stableGroupColors;
+        if (colors != null)
+            for (var i = 0; i < colors.Count; i++)
+                Plugin.Logger.LogInfo($"[lead] group {i} {colors[i]?.r} {colors[i]?.g} {colors[i]?.b}");
+    }
+
+    public static void SetHalterFor(string horseName, string color)
+    {
+        foreach (var h in DataManager.i.data.horses)
+            if (h.name == horseName)
+            {
+                Store.SetHalter(h.uuid, color);
+                Plugin.Logger.LogInfo($"[lead] {horseName} halter set to {color}");
+            }
+    }
+
+    public static void SetLead(string hex)
+    {
+        UnityEngine.ColorUtility.TryParseHtmlString(hex, out var c);
+        foreach (var r in UnityEngine.Object.FindObjectsByType<UnityEngine.LineRenderer>(UnityEngine.FindObjectsSortMode.None))
+        {
+            r.startColor = c;
+            r.endColor = c;
+        }
+    }
+
     public static void DumpHalter(string path)
     {
         var sprite = Halters.Icon();
@@ -83,6 +124,18 @@ public static class TestHooks
         for (var i = 0; i < outfit.Length && i < values.Length; i++)
             GameArrays.Set(outfit, i, values[i]);
     }
+
+    // The game's custom colour items and the store's stage, to see when they are sold.
+    public static void CustomItems()
+    {
+        Plugin.Logger.LogInfo($"[custom] store tack stage {DataManager.i?.data?.equipmentStoreTackStage}");
+        foreach (var t in InventoryLibrary.i.GetAllTacks())
+            if (t.id.Contains("#") || t.type == TackType.EAR_BONNET)
+                Plugin.Logger.LogInfo($"[custom] {t.type} {t.id} price={t.price} stage={t.availableAtStage} shop={t.availableInShop} colors={t.colors?.Length} match={(t.matchColor == null ? "" : string.Join(",", t.matchColor))} sprite={t.spriteShelfLayer1?.name}/{t.spriteShelfLayer2?.name}");
+    }
+
+    // Test copies only: the store's tack stage (custom colours are late in the game).
+    public static void SetStoreStage(string stage) => DataManager.i.data.equipmentStoreTackStage = int.Parse(stage);
 
     public static void SetEnabled(string on) => Plugin.Enabled.Value = bool.Parse(on);
 

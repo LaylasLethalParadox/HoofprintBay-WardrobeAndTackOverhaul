@@ -463,7 +463,7 @@ internal static class Cabinets
                 titleText = title.text;
                 title.text = "Halter";
             }
-            if (buttons.Count == 0 && background != null)
+            if (background != null)
                 Build(background);
             Refresh();
             foreach (var (_, button) in buttons)
@@ -547,65 +547,112 @@ internal static class Cabinets
                 title.text = titleText;
         }
 
+        // One button per offered colour; custom colours bought since the last time get theirs added.
         private void Build(Transform background)
         {
-            var y = 260f;
-            foreach (var kind in Halters.All)
+            foreach (var kind in Halters.Offered())
+                if (!buttons.Exists(b => b.kind.Id == kind.Id))
+                    MakeButton(kind);
+            Layout(background);
+        }
+
+        private void MakeButton(Halters.Kind kind)
+        {
+            var copy = Object.Instantiate(template, cabinet.transform, false).Cast<GameObject>();
+            copy.name = "WardrobeAndTackOverhaul Halter " + kind.Label;
+            copy.SetActive(true);
+            foreach (var updater in copy.GetComponentsInChildren<LanguageUpdater>(true))
             {
-                var copy = Object.Instantiate(template, cabinet.transform, false).Cast<GameObject>();
-                copy.name = "WardrobeAndTackOverhaul Halter " + kind.Label;
-                copy.SetActive(true);
-                foreach (var updater in copy.GetComponentsInChildren<LanguageUpdater>(true))
+                updater.enabled = false;
+                Object.Destroy(updater);
+            }
+            foreach (var image in copy.GetComponentsInChildren<UnityEngine.UI.Image>(true))
+                if (image.gameObject != copy)
+                    Object.Destroy(image.gameObject);
+            var rect = OutfitTabs.Rect(copy.transform);
+            if (baseSize == Vector2.zero)
+                baseSize = new Vector2(rect.sizeDelta.x * 2.6f, rect.sizeDelta.y * 1.1f);
+            rect.sizeDelta = baseSize;
+
+            var label = copy.GetComponentInChildren<TMP_Text>(true);
+            if (label != null)
+            {
+                label.alignment = TextAlignmentOptions.Left;
+                var lr = OutfitTabs.Rect(label.transform);
+                lr.anchorMin = Vector2.zero;
+                lr.anchorMax = Vector2.one;
+                lr.offsetMin = new Vector2(baseSize.y + 20, 0);
+                lr.offsetMax = new Vector2(-10, 0);
+            }
+            var picture = new GameObject("Icon").AddComponent<UnityEngine.UI.Image>();
+            picture.rectTransform.SetParent(rect, false);
+            picture.rectTransform.anchorMin = picture.rectTransform.anchorMax = new Vector2(0f, 0.5f);
+            picture.rectTransform.sizeDelta = new Vector2(baseSize.y * 0.9f, baseSize.y * 0.9f);
+            picture.rectTransform.anchoredPosition = new Vector2(baseSize.y * 0.6f, 0);
+            picture.raycastTarget = false;
+            Halters.ShowIcon(picture, kind);
+            var button = copy.GetComponent<UnityEngine.UI.Button>();
+            button.onClick = new UnityEngine.UI.Button.ButtonClickedEvent();
+            var k = kind;
+            button.onClick.AddListener(new Action(() =>
+            {
+                try
                 {
-                    updater.enabled = false;
-                    Object.Destroy(updater);
+                    Halters.Choose(cabinet.horse, k.Id);
+                    Refresh();
                 }
-                foreach (var image in copy.GetComponentsInChildren<UnityEngine.UI.Image>(true))
-                    if (image.gameObject != copy)
-                        Object.Destroy(image.gameObject);
-                var rect = OutfitTabs.Rect(copy.transform);
+                catch (Exception e)
+                {
+                    Plugin.Logger.LogError($"Choosing the halter failed: {e}");
+                }
+            }));
+            copy.SetActive(false);
+            buttons.Add((kind, copy));
+        }
+
+        private Vector2 baseSize;
+
+        // One column while the buttons fit on the paper; with more custom colours the rows get lower first,
+        // then the buttons go into more (narrower) columns.
+        private void Layout(Transform background)
+        {
+            const float top = 260f, gap = 22f, bottomMargin = 60f, sideMargin = 50f;
+            var paper = OutfitTabs.Rect(background).rect;
+            var free = paper.height - top + baseSize.y / 2 - bottomMargin;
+            int n = buttons.Count, columns = 1, rows = n;
+            var rowHeight = baseSize.y;
+            for (columns = 1; columns <= 4; columns++)
+            {
+                rows = (n + columns - 1) / columns;
+                rowHeight = Math.Min(baseSize.y, (free - gap * (rows - 1)) / rows);
+                if (rowHeight >= baseSize.y * 0.75f)
+                    break;
+            }
+            columns = Math.Min(columns, 4);
+            var width = Math.Min(baseSize.x, (paper.width - 2 * sideMargin - gap * (columns - 1)) / columns);
+            var firstRow = top - baseSize.y / 2 + rowHeight / 2;
+            for (var i = 0; i < n; i++)
+            {
+                var rect = OutfitTabs.Rect(buttons[i].button.transform);
+                int col = i / rows, row = i % rows;
                 rect.SetParent(background, false);
                 rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 1f);
                 rect.pivot = new Vector2(0.5f, 0.5f);
-                rect.sizeDelta = new Vector2(rect.sizeDelta.x * 2.6f, rect.sizeDelta.y * 1.1f);
-                rect.anchoredPosition = new Vector2(0, -y);
-                y += rect.sizeDelta.y + 26f;
+                rect.localScale = Vector3.one;
+                rect.sizeDelta = new Vector2(width, rowHeight);
+                var x = (col - (columns - 1) / 2f) * (width + gap);
+                rect.anchoredPosition = new Vector2(x, -(firstRow + row * (rowHeight + gap)));
                 rect.SetParent(cabinet.transform, true);
 
-                var label = copy.GetComponentInChildren<TMP_Text>(true);
-                if (label != null)
+                var icon = rect.Find("Icon")?.GetComponent<RectTransform>();
+                if (icon != null)
                 {
-                    label.alignment = TextAlignmentOptions.Left;
-                    var lr = OutfitTabs.Rect(label.transform);
-                    lr.anchorMin = Vector2.zero;
-                    lr.anchorMax = Vector2.one;
-                    lr.offsetMin = new Vector2(rect.sizeDelta.y + 20, 0);
-                    lr.offsetMax = new Vector2(-10, 0);
+                    icon.sizeDelta = new Vector2(rowHeight * 0.9f, rowHeight * 0.9f);
+                    icon.anchoredPosition = new Vector2(rowHeight * 0.6f, 0);
                 }
-                var picture = new GameObject("Icon").AddComponent<UnityEngine.UI.Image>();
-                picture.rectTransform.SetParent(rect, false);
-                picture.rectTransform.anchorMin = picture.rectTransform.anchorMax = new Vector2(0f, 0.5f);
-                picture.rectTransform.sizeDelta = new Vector2(rect.sizeDelta.y * 0.9f, rect.sizeDelta.y * 0.9f);
-                picture.rectTransform.anchoredPosition = new Vector2(rect.sizeDelta.y * 0.6f, 0);
-                picture.raycastTarget = false;
-                Halters.ShowIcon(picture, kind.Color);
-                var button = copy.GetComponent<UnityEngine.UI.Button>();
-                button.onClick = new UnityEngine.UI.Button.ButtonClickedEvent();
-                var k = kind;
-                button.onClick.AddListener(new Action(() =>
-                {
-                    try
-                    {
-                        Halters.Choose(cabinet.horse, k.Id);
-                        Refresh();
-                    }
-                    catch (Exception e)
-                    {
-                        Plugin.Logger.LogError($"Choosing the halter failed: {e}");
-                    }
-                }));
-                copy.SetActive(false);
-                buttons.Add((kind, copy));
+                var label = buttons[i].button.GetComponentInChildren<TMP_Text>(true);
+                if (label != null)
+                    OutfitTabs.Rect(label.transform).offsetMin = new Vector2(rowHeight + 20, 0);
             }
         }
 
@@ -617,7 +664,8 @@ internal static class Cabinets
                 var owned = Store.OwnsHalter(kind.Id);
                 var label = button.GetComponentInChildren<TMP_Text>(true);
                 if (label != null)
-                    label.text = owned ? kind.Label : $"{kind.Label}  <size=70%>(buy in the store)</size>";
+                    label.text = Halters.IsCustom(kind.Id) ? $"Custom\n<size=70%>{kind.Id}</size>"
+                        : owned ? kind.Label : $"{kind.Label}  <size=70%>(buy in the store)</size>";
                 button.GetComponent<UnityEngine.UI.Button>().interactable = owned;
                 var image = button.GetComponent<UnityEngine.UI.Image>();
                 if (image != null)

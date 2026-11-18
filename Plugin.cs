@@ -13,7 +13,7 @@ public class Plugin : BasePlugin
 {
     public const string Guid = "hoofprintbay.wardrobeandtackoverhaul";
     public const string Name = "Wardrobe and tack overhaul";
-    public const string Version = "1.0.1";
+    public const string Version = "1.1.0";
     internal const string ModManagerGuid = "hoofprintbay.modmanager";
 
     internal static ManualLogSource Logger;

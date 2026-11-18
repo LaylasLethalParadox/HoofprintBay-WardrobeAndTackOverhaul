@@ -29,7 +29,23 @@ internal static class Halters
         new("purple", "Purple", new Color(0.56f, 0.32f, 0.74f)),
     };
 
-    public static Kind Find(string id) => All.FirstOrDefault(k => k.Id == id);
+    // Custom colours bought through the store's colour picker are kept as "#RRGGBB", like the game's own
+    // custom coloured items carry their colour in the id.
+    public static bool IsCustom(string id) => id != null && id.Length == 7 && id[0] == '#';
+
+    public static Kind Find(string id)
+    {
+        var fixedKind = All.FirstOrDefault(k => k.Id == id);
+        if (fixedKind != null || !IsCustom(id) || !ColorUtility.TryParseHtmlString(id, out var color))
+            return fixedKind;
+        return new Kind(id, "Custom " + id, color);
+    }
+
+    public static string Hex(Color c) => "#" + ColorUtility.ToHtmlStringRGB(c);
+
+    // The colours the Halter page offers: the fixed ones, then every custom one bought so far.
+    public static IEnumerable<Kind> Offered() =>
+        All.Concat(Store.CustomHalters().Select(Find).Where(k => k != null));
 
     // ---- on the horse ----
 
@@ -95,6 +111,61 @@ internal static class Halters
     [HarmonyPatch(typeof(DisplayHorse), nameof(DisplayHorse.UpdateHalterColor))]
     [HarmonyFinalizer]
     private static void AfterDisplayHalter(Swap __state) => SwapOut(__state);
+
+    // On a walking trail (Forest Walk) the rider leads the horse with a rope of the sidescroller's own
+    // (HorseHolder/RiderOnFoot/Leadrope), which UpdateHalterColor never reaches. Its material is plain
+    // white, so the line's own colour is set to the halter's.
+    private static Color? walkRope;
+
+    [HarmonyPatch(typeof(SidescrollerHorse), nameof(SidescrollerHorse.SetData))]
+    [HarmonyPostfix]
+    private static void WalkRopeOnSetData(SidescrollerHorse __instance, HorseData __0, SidescrollerMode __2)
+    {
+        try
+        {
+            walkRope = null;
+            if (!Plugin.Enabled.Value || __2 != SidescrollerMode.WALKING || __0 == null)
+                return;
+            var kind = Find(Store.HalterOf(__0.uuid));
+            if (kind == null)
+                return;
+            walkRope = kind.Color;
+            var holder = __instance.transform.parent != null ? __instance.transform.parent : __instance.transform;
+            ColourRopes(holder);
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"Colouring the lead rope failed: {e}"); }
+    }
+
+    // The rope may set itself up after SetData, so it is coloured again when it starts.
+    [HarmonyPatch(typeof(LineRendererRope), nameof(LineRendererRope.Start))]
+    [HarmonyPostfix]
+    private static void WalkRopeOnStart(LineRendererRope __instance)
+    {
+        try
+        {
+            if (walkRope == null || __instance.transform.parent == null || __instance.transform.parent.name != "RiderOnFoot")
+                return;
+            Colour(__instance);
+        }
+        catch (Exception e) { Plugin.Logger.LogError($"Colouring the lead rope failed: {e}"); }
+    }
+
+    private static void ColourRopes(Transform root)
+    {
+        foreach (var rope in root.GetComponentsInChildren<LineRendererRope>(true))
+            Colour(rope);
+    }
+
+    private static void Colour(LineRendererRope rope)
+    {
+        var line = rope.lineRenderer;
+        if (line == null)
+            line = rope.GetComponent<LineRenderer>();
+        if (line == null || walkRope == null)
+            return;
+        line.startColor = walkRope.Value;
+        line.endColor = walkRope.Value;
+    }
 
     // The halter's own picture from the horse (white straps, black lines, so a tint colours the straps).
     // It is only loaded where horses are drawn, so it is kept from the yard or stable for the store.
@@ -201,9 +272,53 @@ internal static class Halters
 
     private static float Gray(Color c) => 0.299f * c.r + 0.587f * c.g + 0.114f * c.b;
 
-    public static void ShowIcon(Image image, Color color)
+    // The custom colour item's picture in the shop list: straps in rainbow stripes.
+    private static Sprite rainbow;
+
+    private static Sprite RainbowIcon()
     {
-        var kind = All.FirstOrDefault(k => k.Color == color);
+        if (rainbow != null)
+            return rainbow;
+        var source = Icon();
+        if (source == null)
+            return null;
+        try
+        {
+            var tex = ReadSprite(source);
+            var pixels = tex.GetPixels();
+            var strap = 0.05f;
+            foreach (var c in pixels)
+                if (c.a > 0.5f)
+                    strap = Math.Max(strap, Gray(c));
+            for (var y = 0; y < tex.height; y++)
+                for (var x = 0; x < tex.width; x++)
+                {
+                    var i = y * tex.width + x;
+                    var c = pixels[i];
+                    var t = Mathf.Clamp01(Gray(c) / strap);
+                    var hue = Color.HSVToRGB((x + y) / (float)(tex.width + tex.height) * 0.85f, 0.75f, 0.95f);
+                    pixels[i] = new Color(hue.r * t, hue.g * t, hue.b * t, c.a);
+                }
+            tex.SetPixels(pixels);
+            tex.Apply();
+            tex.name = "halter-rainbow";
+            Object.DontDestroyOnLoad(tex);
+            tex.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            rainbow = Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), source.pixelsPerUnit);
+            rainbow.name = "WardrobeAndTackOverhaul halter custom";
+            Object.DontDestroyOnLoad(rainbow);
+            rainbow.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            return rainbow;
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogError($"Making the custom halter picture failed: {e}");
+            return source;
+        }
+    }
+
+    public static void ShowIcon(Image image, Kind kind)
+    {
         var sprite = kind != null ? IconFor(kind) : Icon();
         if (image == null || sprite == null)
             return;
@@ -234,10 +349,46 @@ internal static class Halters
     private static readonly Dictionary<string, TackItem> items = new();
     private static bool openingEarBonnets;
 
-    public static string ColorOf(string itemId) =>
-        itemId != null && itemId.StartsWith(IdPrefix) ? itemId.Substring(IdPrefix.Length) : null;
+    // The game's own custom colour items end in this; the store opens its colour picker for them and puts
+    // the picked colour into the bought item's id instead ("...#1E1E1E").
+    private const string CustomMark = "#customColor";
+    public const string CustomId = IdPrefix + CustomMark;
+    public const int CustomPrice = 60;
+
+    // While its picker is open the store holds a copy of the item with "#customColor" cut off.
+    private static bool IsCustomTemplate(string id) => id == CustomId || id == IdPrefix;
+
+    public static string ColorOf(string itemId)
+    {
+        if (itemId == null || !itemId.StartsWith(IdPrefix) || IsCustomTemplate(itemId))
+            return null;
+        var rest = itemId.Substring(IdPrefix.Length);
+        return rest.StartsWith("#") ? rest.ToUpperInvariant() : rest;
+    }
 
     public static string ItemName(Kind kind) => $"{kind.Label} Halter with Lead Rope";
+
+    private static TackItem customItem;
+
+    // Offered only once the store sells the game's own custom coloured ear bonnet, and copies its colour slots.
+    private static TackItem CustomItem(TackItem gameCustom)
+    {
+        if (customItem != null && customItem.spriteShelfLayer1 != null)
+            return customItem;
+        var sprite = RainbowIcon();
+        if (sprite == null)
+            return null;
+        // matchColor stays off: with it the store hue-shifts the picture through its tack material, which
+        // turns the ready-coloured halter pictures into the wrong colours.
+        customItem = new TackItem(TackType.EAR_BONNET, CustomId, CustomPrice, sprite, null,
+            new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<Sprite>(0),
+            new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppReferenceArray<Sprite>(0),
+            new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<Color>(new[] { Color.white }),
+            new Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<bool>(new[] { false }));
+        customItem.availableInShop = true;
+        customItem.availableAtStage = gameCustom?.availableAtStage ?? 0;
+        return customItem;
+    }
 
     private static TackItem ItemFor(Kind kind)
     {
@@ -291,6 +442,16 @@ internal static class Halters
                 if (!inBasket)
                     __0.Add(item);
             }
+            TackItem gameCustom = null;
+            foreach (var b in __0)
+                if (b != null && b.id != null && b.id.EndsWith(CustomMark) && !b.id.StartsWith(IdPrefix))
+                    gameCustom = b.TryCast<TackItem>();
+            if (gameCustom != null)
+            {
+                var custom = CustomItem(gameCustom);
+                if (custom != null)
+                    __0.Add(custom);
+            }
         }
         catch (Exception e)
         {
@@ -319,6 +480,128 @@ internal static class Halters
         }
     }
 
+    // The picker's preview: one picture recoloured on every change (dragging would otherwise make a
+    // texture per colour).
+    private static Texture2D previewTex;
+    private static Sprite previewSprite;
+    private static Color[] previewBase;
+    private static float previewStrap;
+
+    private static Sprite PreviewFor(Color color)
+    {
+        if (previewSprite == null)
+        {
+            var source = Icon();
+            if (source == null)
+                return null;
+            previewTex = ReadSprite(source);
+            previewTex.name = "halter-preview";
+            Object.DontDestroyOnLoad(previewTex);
+            previewTex.hideFlags = HideFlags.DontUnloadUnusedAsset;
+            previewBase = previewTex.GetPixels();
+            previewStrap = 0.05f;
+            foreach (var c in previewBase)
+                if (c.a > 0.5f)
+                    previewStrap = Math.Max(previewStrap, Gray(c));
+            previewSprite = Sprite.Create(previewTex, new Rect(0, 0, previewTex.width, previewTex.height), new Vector2(0.5f, 0.5f), source.pixelsPerUnit);
+            previewSprite.name = "WardrobeAndTackOverhaul halter preview";
+            Object.DontDestroyOnLoad(previewSprite);
+            previewSprite.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        }
+        var pixels = new Color[previewBase.Length];
+        for (var i = 0; i < pixels.Length; i++)
+        {
+            var c = previewBase[i];
+            var t = Mathf.Clamp01(Gray(c) / previewStrap);
+            pixels[i] = new Color(color.r * t, color.g * t, color.b * t, c.a);
+        }
+        previewTex.SetPixels(pixels);
+        previewTex.Apply();
+        return previewSprite;
+    }
+
+    [HarmonyPatch(typeof(EquipmentStore), nameof(EquipmentStore.SelectEquipmentToBuy))]
+    [HarmonyPatch(typeof(EquipmentStore), nameof(EquipmentStore.OnColorChange))]
+    [HarmonyPostfix]
+    private static void ShowPickedColour(EquipmentStore __instance)
+    {
+        try
+        {
+            if (!IsCustomTemplate(__instance?.itemForColorPicking?.id))
+                return;
+            var pickers = __instance.colorPickers;
+            var image = __instance.colorPickingPreview;
+            if (pickers == null || pickers.Length == 0 || pickers[0] == null || image == null)
+                return;
+            var sprite = PreviewFor(pickers[0].GetSelectedColor());
+            if (sprite == null)
+                return;
+            image.sprite = sprite;
+            image.material = null;
+            image.color = Color.white;
+            image.preserveAspect = true;
+            // The game may draw a second layer (lines) on top; the halter picture has its own.
+            for (var i = 0; i < image.transform.childCount; i++)
+            {
+                var layer = image.transform.GetChild(i).GetComponent<Image>();
+                if (layer != null)
+                    layer.enabled = false;
+            }
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogError($"Showing the custom halter colour failed: {e}");
+        }
+    }
+
+    // The bought item is the game's copy of the custom item with the colour in its id; its picture is
+    // still the rainbow one, so it gets the halter in its colour for the basket.
+    [HarmonyPatch(typeof(EquipmentStore), nameof(EquipmentStore.AddItemToBasket))]
+    [HarmonyPrefix]
+    private static void BeforeAddToBasket(BuyableItem __0)
+    {
+        try
+        {
+            var kind = Find(ColorOf(__0?.id));
+            if (kind == null || !IsCustom(kind.Id))
+                return;
+            var sprite = IconFor(kind);
+            if (sprite != null)
+                __0.spriteShelfLayer1 = sprite;
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogError($"Colouring the custom halter in the basket failed: {e}");
+        }
+    }
+
+    // The game refuses a custom colour that is already owned by looking in the tack inventory, where halters
+    // never go, so that check is made here with the game's own message.
+    [HarmonyPatch(typeof(EquipmentStore), nameof(EquipmentStore.ConfirmCustomColorItem))]
+    [HarmonyPrefix]
+    private static bool BeforeConfirmCustom(EquipmentStore __instance)
+    {
+        try
+        {
+            if (!IsCustomTemplate(__instance?.itemForColorPicking?.id))
+                return true;
+            var pickers = __instance.colorPickers;
+            if (pickers == null || pickers.Length == 0 || pickers[0] == null)
+                return true;
+            var hex = Hex(pickers[0].GetSelectedColor());
+            Plugin.Logger.LogInfo($"Custom halter colour picked: {hex}");
+            if (!Store.OwnsHalter(hex))
+                return true;
+            NotificationManager.i?.ShowToast(Lang.gs("toast.ui.colorPicker.alreadyExists"), 3f, 0f);
+            return false;
+        }
+        catch (Exception e)
+        {
+            Plugin.Logger.LogError($"Checking the custom halter colour failed: {e}");
+            return true;
+        }
+    }
+
     // The shop shows item names (and the basket its lines) through translation keys made from the item id.
     [HarmonyPatch(typeof(Lang), nameof(Lang.gs))]
     [HarmonyPatch(typeof(Lang), nameof(Lang.getString))]
@@ -330,10 +613,18 @@ internal static class Halters
             if (__0 == null || !__0.Contains(IdPrefix))
                 return;
             var rest = __0.Substring(__0.IndexOf(IdPrefix, StringComparison.Ordinal) + IdPrefix.Length);
+            var desc = rest.Contains("desc");
+            // The game looks custom coloured items up by the id cut off at '#', so their key ends right here.
+            if (rest == "" || rest.StartsWith("#") || rest.StartsWith("."))
+            {
+                __result = desc ? "A halter with matching lead rope in a colour of your choice, for every horse in the stable."
+                                : "Custom Color Halter with Lead Rope";
+                return;
+            }
             var kind = All.FirstOrDefault(k => rest == k.Id || rest.StartsWith(k.Id + "."));
             if (kind == null)
                 return;
-            __result = rest.Contains("desc") ? "A halter with matching lead rope, for every horse in the stable." : ItemName(kind);
+            __result = desc ? "A halter with matching lead rope, for every horse in the stable." : ItemName(kind);
         }
         catch { }
     }
